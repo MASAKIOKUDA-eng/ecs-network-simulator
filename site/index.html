@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ECS ネットワークシミュレーター</title>
+  <meta name="description" content="Amazon ECS のネットワークモード（awsvpc / bridge / host）の違いを、配置・通信経路・障害対応クイズで体験しながら学ぶゲーム">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css">
+  <script type="module" src="assets/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へスキップ</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <p class="brand"><span class="brand-mark" aria-hidden="true">⇄</span> ECS ネットワークシミュレーター</p>
+      <nav aria-label="ゲームの画面">
+        <ul class="nav-list">
+          <li><a href="#intro" data-view-link="intro">はじめに</a></li>
+          <li><a href="#placement" data-view-link="placement">配置シミュレーター</a></li>
+          <li><a href="#path" data-view-link="path">通信経路をたどる</a></li>
+          <li><a href="#quiz" data-view-link="quiz">障害対応クイズ</a></li>
+          <li><a href="#chooser" data-view-link="chooser">モード診断</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="wrap" tabindex="-1">
+    <noscript>
+      <p class="notice">このゲームは JavaScript を使います。ブラウザの設定で JavaScript を有効にしてください。</p>
+    </noscript>
+
+    <!-- はじめに -->
+    <section id="view-intro" class="view" data-view="intro" aria-labelledby="h-intro">
+      <h1 id="h-intro" tabindex="-1">ECS のネットワークモードを、動かして覚えよう</h1>
+      <p class="lead">
+        同じアプリを 5 つのパターンで動かした
+        <a href="https://github.com/MASAKIOKUDA-eng/aws-ecs-nw-mode-handson" rel="noopener noreferrer">ECS ネットワークモード比較ハンズオン</a>
+        の構成と実測値をもとにしたシミュレーターです。AWS アカウントがなくても遊べます。
+      </p>
+
+      <h2>比べる 5 つのパターン</h2>
+      <div class="table-scroll" role="region" aria-labelledby="cap-patterns" tabindex="0">
+        <table class="data-table">
+          <caption id="cap-patterns">パターンごとのキャパシティ、ネットワークモード、ALB のターゲットタイプ</caption>
+          <thead>
+            <tr><th scope="col">ID</th><th scope="col">キャパシティ</th><th scope="col">ネットワークモード</th><th scope="col">ALB ターゲット</th><th scope="col">ひとこと</th></tr>
+          </thead>
+          <tbody id="pattern-table-body"></tbody>
+        </table>
+      </div>
+
+      <h2>遊び方</h2>
+      <ol class="steps">
+        <li><a href="#placement">配置シミュレーター</a>：EC2 の台数とタスク数を変えて、何個のタスクが動くか、月額はいくらかを確かめます。</li>
+        <li><a href="#path">通信経路をたどる</a>：ALB からコンテナまで、リクエストが通る場所を 1 歩ずつ見ます。</li>
+        <li><a href="#quiz">障害対応クイズ</a>：ハンズオンで実際に起きた障害やセキュリティの結果から出題します。</li>
+        <li><a href="#chooser">モード診断</a>：質問に答えて、あなたに合うネットワークモードを選びます。</li>
+      </ol>
+      <p class="note">数値は 2026 年 11 月 9 日に us-east-1 で計測した結果（1 日・1 環境）です。料金とサービス仕様は変わるため、実際の設計では公式ドキュメントで最新の値を確認してください。</p>
+      <p><a class="button" href="#placement">配置シミュレーターから始める</a></p>
+    </section>
+
+    <!-- 配置シミュレーター -->
+    <section id="view-placement" class="view" data-view="placement" aria-labelledby="h-placement" hidden>
+      <h1 id="h-placement" tabindex="-1">配置シミュレーター</h1>
+      <p class="lead">c6i.large（2 vCPU / 4 GiB）にタスクを置いてみましょう。ENI・ポート・メモリのどれが上限になるかはパターンで変わります。</p>
+
+      <div class="sim-layout">
+        <form id="sim-form" class="panel sim-controls" aria-labelledby="h-sim-controls">
+          <h2 id="h-sim-controls">条件</h2>
+          <fieldset>
+            <legend>パターン</legend>
+            <div id="sim-patterns" class="radio-list"></div>
+          </fieldset>
+
+          <div class="field">
+            <label for="sim-size">タスクのサイズ</label>
+            <select id="sim-size" name="size"></select>
+          </div>
+
+          <div class="field">
+            <label for="sim-tasks">希望するタスク数</label>
+            <div class="range-row">
+              <input id="sim-tasks" name="tasks" type="range" min="1" max="40" step="1" value="10" aria-describedby="sim-tasks-out">
+              <output id="sim-tasks-out" for="sim-tasks">10 個</output>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="sim-instances">EC2 の台数</label>
+            <div class="range-row">
+              <input id="sim-instances" name="instances" type="range" min="1" max="8" step="1" value="2" aria-describedby="sim-instances-out sim-instances-hint">
+              <output id="sim-instances-out" for="sim-instances">2 台</output>
+            </div>
+            <p id="sim-instances-hint" class="hint">ハンズオンは各パターン 2 台。Fargate では使いません。</p>
+          </div>
+        </form>
+
+        <div class="sim-output">
+          <section class="panel" aria-labelledby="h-sim-result">
+            <h2 id="h-sim-result">配置の結果</h2>
+            <div id="sim-figure" class="figure"></div>
+            <ul id="sim-legend" class="legend" aria-label="図の凡例">
+              <li><span class="swatch swatch-task" aria-hidden="true"></span>実行中のタスク</li>
+              <li><span class="swatch swatch-free" aria-hidden="true"></span>空き（CPU・メモリに余裕あり）</li>
+              <li><span class="swatch swatch-blocked" aria-hidden="true"></span>CPU・メモリは空いているが ENI やポートの制約で使えない枠</li>
+            </ul>
+            <dl id="sim-summary" class="stats"></dl>
+            <p id="sim-explain" class="explain"></p>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel" aria-labelledby="h-compare">
+        <h2 id="h-compare">全タスクを動かすには：5 パターンの比較</h2>
+        <p id="compare-desc" class="hint"></p>
+        <div id="compare-chart" class="figure"></div>
+        <div class="table-scroll" role="region" aria-labelledby="cap-compare" tabindex="0">
+          <table class="data-table">
+            <caption id="cap-compare">パターン別の必要台数・月額（試算）・VPC の IP 消費</caption>
+            <thead>
+              <tr>
+                <th scope="col">パターン</th>
+                <th scope="col">1 台あたり</th>
+                <th scope="col">上限の理由</th>
+                <th scope="col">必要台数</th>
+                <th scope="col">月額（試算）</th>
+                <th scope="col">VPC の IP</th>
+              </tr>
+            </thead>
+            <tbody id="compare-body"></tbody>
+          </table>
+        </div>
+        <p class="note">単価：c6i.large $0.085/時、Fargate $0.04048/vCPU 時・$0.004445/GB 時（us-east-1、2026-11-09）、月 730 時間。データ転送・ALB・VPC エンドポイント・ログは含みません。</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-race">
+        <h2 id="h-race">起動レース</h2>
+        <p>10 タスクを同時に起動したときの起動時間（中央値）で競争します。実際の時間の 4 分の 1 の速さで再生します。</p>
+        <p><button type="button" id="race-start" class="button">レースを開始</button></p>
+        <ol id="race-lanes" class="race"></ol>
+        <p id="race-result" class="explain"></p>
+      </section>
+    </section>
+
+    <!-- 通信経路 -->
+    <section id="view-path" class="view" data-view="path" aria-labelledby="h-path" hidden>
+      <h1 id="h-path" tabindex="-1">通信経路をたどる</h1>
+      <p class="lead">負荷生成 EC2 から ALB を通ってコンテナに届くまでを、1 歩ずつ進めます。</p>
+
+      <div class="panel">
+        <fieldset>
+          <legend>パターン</legend>
+          <div id="path-patterns" class="radio-list radio-inline"></div>
+        </fieldset>
+
+        <h2 id="h-path-steps">リクエストの経路</h2>
+        <ol id="path-steps" class="path" aria-labelledby="h-path-steps"></ol>
+        <div class="button-row">
+          <button type="button" id="path-prev" class="button button-secondary">前へ</button>
+          <button type="button" id="path-next" class="button">次へ</button>
+          <button type="button" id="path-reset" class="button button-secondary">最初から</button>
+        </div>
+        <p id="path-status" class="explain"></p>
+      </div>
+
+      <section class="panel" aria-labelledby="h-probe">
+        <h2 id="h-probe">コンテナの中から何に届く？</h2>
+        <p>ハンズオンの security-probe.sh の結果です。「届く」はコンテナからホストの資源に手が届くことを意味します。</p>
+        <div class="table-scroll" role="region" aria-labelledby="cap-probe" tabindex="0">
+          <table class="data-table">
+            <caption id="cap-probe">コンテナから届くかどうか（選択中のパターンを強調）</caption>
+            <thead id="probe-head"></thead>
+            <tbody id="probe-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-obs">
+        <h2 id="h-obs">見えるもの・使えるもの</h2>
+        <div class="table-scroll" role="region" aria-labelledby="cap-obs" tabindex="0">
+          <table class="data-table">
+            <caption id="cap-obs">観測データとサービス間通信の対応</caption>
+            <thead id="obs-head"></thead>
+            <tbody id="obs-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- クイズ -->
+    <section id="view-quiz" class="view" data-view="quiz" aria-labelledby="h-quiz" hidden>
+      <h1 id="h-quiz" tabindex="-1">障害対応クイズ</h1>
+      <p class="lead">ハンズオンで実際に起きた障害と計測結果から出題します。全 <span id="quiz-total"></span> 問です。</p>
+      <div id="quiz-root" class="panel"></div>
+    </section>
+
+    <!-- モード診断 -->
+    <section id="view-chooser" class="view" data-view="chooser" aria-labelledby="h-chooser" hidden>
+      <h1 id="h-chooser" tabindex="-1">モード診断</h1>
+      <p class="lead">ハンズオンの結論にある選び方のフローチャートを、質問形式でたどります。</p>
+      <div id="chooser-root" class="panel"></div>
+    </section>
+
+    <div id="live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>出典：<a href="https://github.com/MASAKIOKUDA-eng/aws-ecs-nw-mode-handson" rel="noopener noreferrer">aws-ecs-nw-mode-handson</a>（Apache License 2.0）。学習用のシミュレーションであり、AWS の公式ツールではありません。</p>
+    </div>
+  </footer>
+</body>
+</html>

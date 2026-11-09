@@ -1,0 +1,8 @@
+{
+  "contentSecurityPolicy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'",
+  "permissionsPolicy": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()",
+  "crossOriginOpenerPolicy": "same-origin",
+  "crossOriginResourcePolicy": "same-origin",
+  "referrerPolicy": "no-referrer",
+  "hstsMaxAgeSeconds": 63072000
+}
